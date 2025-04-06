@@ -29,9 +29,45 @@ def _top_k_gating_kernel(
         k: Number of top experts to select
         BLOCK_SIZE: Size of the CUDA block
     """
-    # TODO: Replace this with the actual implementation
-    # This is just a skeleton to show the structure
-    pass
+    pid = tl.program_id(axis=0)
+    batch_idx = pid // seq_len 
+    seq_idx = pid  % seq_len
+    logits_offest = batch_idx * seq_len * num_experts + seq_len * num_experts
+    indices_offests = batch_idx * seq_len * k + seq_idx * k 
+    values_offset = batch_idx * seq_len * k + seq_len * k 
+
+    logits_block_ptr = logits_ptr + logits_offest
+    logits = tl.load(logits_block_ptr + tl.arange(0, num_experts))
+
+    logits_max =  tl.max(logits , axis = 0 )
+    logits_exp = tl.exp(logits - logits_max)
+    softmax_denom = tl.sum(logits_exp)
+    probs = logits_exp / softmax_denom
+
+    top_k_values = tl.zeros([k], dtype=tl.float32)
+    top_k_indices = tl.zeros([k], dtype=tl.int32)
+
+    for i in range(k):
+        current_max = tl.float32(-1.0)
+        current_idx = tl.int32(-1)
+        
+        for j in range(num_experts):
+            is_selected = tl.int32(0)
+            for l in range(i):
+                is_selected += tl.where(top_k_indices[l] == j, 1, 0)
+            
+            mask = (is_selected == 0) & (probs[j] > current_max)
+            current_max = tl.where(mask, probs[j], current_max)
+            current_idx = tl.where(mask, j, current_idx)
+        
+        top_k_values[i] = current_max
+        top_k_indices[i] = current_idx
+
+    indices_block_ptr = indices_ptr + indices_offset
+    values_block_ptr = values_ptr + values_offset
+    tl.store(indices_block_ptr + tl.arange(0, k), top_k_indices)
+    tl.store(values_block_ptr + tl.arange(0, k), top_k_values)
+
 
 @triton.jit
 def _compute_routing_probabilities_kernel(
@@ -104,6 +140,7 @@ def _create_dispatch_tensor_kernel(
     indices_ptr,         # [batch_size, seq_len, k]
     values_ptr,          # [batch_size, seq_len, k]
     dispatch_tensor_ptr, # [batch_size, seq_len, num_experts, capacity]
+    combine_tensor_ptr,  # [batch_size, seq_len, num_experts, capacity]
     expert_counts_ptr,   # [num_experts]
     # Matrix dimensions
     batch_size,
@@ -114,24 +151,50 @@ def _create_dispatch_tensor_kernel(
     # Meta-parameters
     BLOCK_SIZE: tl.constexpr,
 ):
-    """
-    Kernel for creating dispatch tensor.
+    """Kernel for creating dispatch tensor."""
+    # Program ID
+    pid = tl.program_id(axis=0)
     
-    Args:
-        indices_ptr: Pointer to top-k expert indices of shape [batch_size, seq_len, k]
-        values_ptr: Pointer to top-k expert probabilities of shape [batch_size, seq_len, k]
-        dispatch_tensor_ptr: Pointer to output dispatch tensor of shape [batch_size, seq_len, num_experts, capacity]
-        expert_counts_ptr: Pointer to expert counts of shape [num_experts]
-        batch_size: Batch size
-        seq_len: Sequence length
-        num_experts: Number of experts
-        k: Number of top experts
-        capacity: Expert capacity
-        BLOCK_SIZE: Size of the CUDA block
-    """
-    # TODO: Replace this with the actual implementation
-    # This is just a skeleton to show the structure
-    pass
+    # We need atomic operations to track expert counts
+    # This is a simplified version for illustration
+    
+    # Calculate offsets
+    batch_idx = pid // (seq_len * k)
+    token_k_idx = pid % (seq_len * k)
+    seq_idx = token_k_idx // k
+    k_idx = token_k_idx % k
+    
+    # Compute offsets
+    indices_offset = batch_idx * seq_len * k + seq_idx * k + k_idx
+    values_offset = batch_idx * seq_len * k + seq_idx * k + k_idx
+    
+    # Load expert index and probability
+    expert_idx = tl.load(indices_ptr + indices_offset)
+    prob = tl.load(values_ptr + values_offset)
+    
+    # Atomically increment expert count
+    expert_count_ptr = expert_counts_ptr + expert_idx
+    expert_position = tl.atomic_add(expert_count_ptr, 1)
+    
+    # Check if we exceed capacity
+    mask = expert_position < capacity
+    
+    if mask:
+        # Compute dispatch tensor offset
+        dispatch_offset = (batch_idx * seq_len * num_experts * capacity + 
+                          seq_idx * num_experts * capacity + 
+                          expert_idx * capacity + 
+                          expert_position)
+        
+        # Compute combine tensor offset
+        combine_offset = (batch_idx * seq_len * num_experts * capacity + 
+                         seq_idx * num_experts * capacity + 
+                         expert_idx * capacity + 
+                         expert_position)
+        
+        # Store results
+        tl.store(dispatch_tensor_ptr + dispatch_offset, tl.float32(1.0))
+        tl.store(combine_tensor_ptr + combine_offset, prob)
 
 class TritonMoERouter:
     """
