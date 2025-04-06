@@ -21,7 +21,14 @@ src/
 ├── utils/
 │   ├── __init__.py
 │   └── benchmarking.py # Benchmarking utilities
-└── benchmark.py       # Main benchmark script
+├── triton/
+│   ├── README.md      # Triton implementation documentation
+│   └── router/        # Triton router implementation
+│       ├── top_k_router.py # Triton MoE router
+│       └── test_router.py  # Testing utilities
+├── benchmark.py       # Main benchmark script
+├── profile_moe.py     # Profiling script for memory and performance analysis
+└── profiling.py       # General profiling utilities
 ```
 
 ## Features
@@ -36,6 +43,14 @@ src/
   - Full MoE layer performance
   - Expert utilization
   - Impact of different parameters (k, capacity factor)
+- Advanced profiling tools for:
+  - Memory usage analysis
+  - Performance bottleneck identification
+  - Detailed timing of different components
+- Optimized Triton implementation (in progress):
+  - Memory-efficient routing
+  - Optimized top-k selection
+  - Reduced thread divergence
 
 ## Installation
 
@@ -54,6 +69,8 @@ pip install -r requirements.txt
 
 ## Usage
 
+### Running Benchmarks
+
 Run the benchmark suite:
 ```bash
 python src/benchmark.py
@@ -64,26 +81,63 @@ This will:
 2. Analyze expert utilization and generate plots
 3. Profile performance with different parameters
 
-## Benchmarking
+### Profiling the Implementation
 
-The benchmark suite tests:
-- Different batch sizes (1, 4, 8)
-- Different sequence lengths (1024)
-- Different expert counts (8, 16, 32)
-- Different k values (1, 2, 4)
-- Different capacity factors (1.0, 1.5, 2.0)
+Run the profiling script:
+```bash
+python src/profile_moe.py
+```
 
-Results include:
-- Average processing time per batch
-- Tokens processed per second
-- Expert utilization statistics
-- Performance impact of different parameters
+This will:
+1. Profile the MoE router, MoE layer, and transformer block
+2. Generate detailed reports on memory usage and performance
+3. Identify key bottlenecks for optimization
+4. Update the baseline profiling documentation
+
+### Testing the Triton Implementation
+
+Run the Triton router tests:
+```bash
+python -m src.triton.router.test_router
+```
+
+This will:
+1. Test the correctness of the Triton implementation against PyTorch
+2. Benchmark the performance of both implementations
+3. Generate a report with the results
 
 ## Results
 
-The benchmarking results will be saved as:
+The benchmarking and profiling results will be saved as:
 - Expert utilization plots: `expert_utilization_k{k}_cf{capacity_factor}.png`
-- Console output with detailed performance metrics
+- Profiling reports: `docs/router_profiling_report.md`, `docs/moe_layer_profiling_report.md`, etc.
+- Consolidated profiling report: `docs/consolidated_profiling_report.md`
+- Baseline profiling documentation: `docs/baseline_profiling.md`
+- Triton benchmark results: `triton_router_benchmark_results.txt`
+
+## Project Roadmap
+
+1. ✅ Baseline PyTorch Implementation
+   - ✅ Router implementation
+   - ✅ Expert implementation
+   - ✅ MoE layer implementation
+   - ✅ Transformer integration
+
+2. ✅ Evaluation Framework
+   - ✅ Benchmarking utilities
+   - ✅ Expert utilization analysis
+   - ✅ Performance profiling
+
+3. 🔄 Triton Implementation (In Progress)
+   - ✅ Interface definition
+   - ✅ Basic structure
+   - ❌ Core kernels implementation
+   - ❌ Optimization and tuning
+
+4. ❌ Advanced Optimizations (Planned)
+   - ❌ Memory optimization
+   - ❌ Quantization support
+   - ❌ Multi-GPU support
 
 ## Contributing
 

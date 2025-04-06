@@ -175,44 +175,61 @@ def run_benchmark_suite(
                 print(f"\nTesting configuration: {config_name}")
                 
                 # Router benchmark
-                print("  Benchmarking router...")
-                router_res = benchmark_moe_router(
-                    batch_size=batch_size,
-                    seq_len=seq_len,
-                    input_dim=input_dim,
-                    num_experts=num_experts,
-                    k=k,
-                    num_runs=20,
-                    device=device
-                )
-                router_results[config_name] = router_res
-                print(f"  Router: {router_res['avg_time_ms']:.2f} ms, {router_res['tokens_per_second']:.2f} tokens/s")
+                try:
+                    print("  Benchmarking router...")
+                    router_res = benchmark_moe_router(
+                        batch_size=batch_size,
+                        seq_len=seq_len,
+                        input_dim=input_dim,
+                        num_experts=num_experts,
+                        k=k,
+                        num_runs=20,
+                        device=device
+                    )
+                    router_results[config_name] = router_res
+                    print(f"  Router: {router_res['avg_time_ms']:.2f} ms, {router_res['tokens_per_second']:.2f} tokens/s")
+                except Exception as e:
+                    print(f"  Router benchmarking failed: {str(e)}")
+                    print("  Skipping to next configuration...")
+                    continue
                 
                 # Full MoE layer benchmark
-                print("  Benchmarking full MoE layer...")
-                layer_res = benchmark_moe_layer(
-                    batch_size=batch_size,
-                    seq_len=seq_len,
-                    input_dim=input_dim,
-                    hidden_dim=hidden_dim,
-                    output_dim=output_dim,
-                    num_experts=num_experts,
-                    k=k,
-                    num_runs=10,
-                    device=device
-                )
-                layer_results[config_name] = layer_res
-                print(f"  Full MoE: {layer_res['avg_time_ms']:.2f} ms, {layer_res['tokens_per_second']:.2f} tokens/s")
+                try:
+                    print("  Benchmarking full MoE layer...")
+                    layer_res = benchmark_moe_layer(
+                        batch_size=batch_size,
+                        seq_len=seq_len,
+                        input_dim=input_dim,
+                        hidden_dim=hidden_dim,
+                        output_dim=output_dim,
+                        num_experts=num_experts,
+                        k=k,
+                        num_runs=10,
+                        device=device
+                    )
+                    layer_results[config_name] = layer_res
+                    print(f"  Full MoE: {layer_res['avg_time_ms']:.2f} ms, {layer_res['tokens_per_second']:.2f} tokens/s")
+                except Exception as e:
+                    print(f"  MoE layer benchmarking failed: {str(e)}")
+                    print("  Skipping to next configuration...")
+                    continue
     
-    # Print summary
+    # Print summary of successful tests
     print("\n--- SUMMARY ---")
-    print("\nRouter Performance:")
-    for config, res in router_results.items():
-        print(f"{config}: {res['avg_time_ms']:.2f} ms, {res['tokens_per_second']:.2f} tokens/s")
     
-    print("\nFull MoE Layer Performance:")
-    for config, res in layer_results.items():
-        print(f"{config}: {res['avg_time_ms']:.2f} ms, {res['tokens_per_second']:.2f} tokens/s")
+    if router_results:
+        print("\nRouter Performance:")
+        for config, res in router_results.items():
+            print(f"{config}: {res['avg_time_ms']:.2f} ms, {res['tokens_per_second']:.2f} tokens/s")
+    else:
+        print("\nNo successful router benchmarks completed.")
+    
+    if layer_results:
+        print("\nFull MoE Layer Performance:")
+        for config, res in layer_results.items():
+            print(f"{config}: {res['avg_time_ms']:.2f} ms, {res['tokens_per_second']:.2f} tokens/s")
+    else:
+        print("\nNo successful MoE layer benchmarks completed.")
     
     return router_results, layer_results
 
